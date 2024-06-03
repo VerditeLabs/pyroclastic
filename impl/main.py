@@ -24,4 +24,4 @@ def main(create_zarr, writeable_zarr):
 
 
 if __name__ == '__main__':
-    main(False, True)
+    main(True, True)

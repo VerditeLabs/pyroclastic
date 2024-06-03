@@ -6,6 +6,7 @@ import tifffile
 import numpy as np
 from PIL import Image
 from numcodecs import Blosc
+import shutil
 
 
 the_index = {
@@ -47,21 +48,29 @@ def _download(url):
         elif url.endswith('.png'):
             data = np.array(Image.open(filedata))
             return data
+    else:
+        raise Exception(f'Cannot download {url}')
 
 
 class ZVol:
     def __init__(self, path, create=False, write=True):
         synchronizer = zarr.ProcessSynchronizer(f'{path}/vesuvius.sync')
         compressor = Blosc(cname='zstd', clevel=9, shuffle=Blosc.BITSHUFFLE)
-        if os.path.exists(f'{path}/vesuvius.zarr'):
-            mode = 'w' if create else ('r+' if write else 'r')
+        exists = os.path.exists(f'{path}/vesuvius.zarr')
+
+        if exists and not create:
+            mode = 'r+' if write else 'r'
             root = zarr.open(f'{path}/vesuvius.zarr', mode=mode)
             self.root = root
             return
-        else:
-            if not create:
-                raise ValueError(f'{path} does not exist, pass create=True to create a zarr')
-            root = zarr.group(store=f'{path}/vesuvius.zarr', synchronizer=synchronizer)
+
+        if create and exists:
+            shutil.rmtree(f'{path}/vesuvius.zarr')
+            shutil.rmtree(f'{path}/vesuvius.sync')
+
+        if not create:
+            raise ValueError(f'{path} does not exist, pass create=True to create a zarr')
+        root = zarr.group(store=f'{path}/vesuvius.zarr', synchronizer=synchronizer)
 
         root.create_group('PHerc0332')
         root.create_group('PHerc1667')
@@ -97,14 +106,15 @@ class ZVol:
 
         for x in range(start, end):
             filename = f"{x:0{len(str(depth))}d}.{ext}"
-            print(f"Downloading {url}{filename}")
             if self.root[scroll][id+'_downloaded'][x] == 1:
                 print(f"skipped {url}{filename}")
                 continue
+            print(f"Downloading {url}{filename}")
             data = _download(url + filename)
+            print(f"Downloaded {url}{filename}")
             self.root[scroll][id][x,:,:] = data
             self.root[scroll][id+'_downloaded'][x] = 1
-            print(f"Downloaded {url}{filename}")
+            print(f"wrote {url}{filename}")
 
     def chunk(self, scroll, id, start, size):
         self.download(scroll,id,start[0],start[0]+size[0])
